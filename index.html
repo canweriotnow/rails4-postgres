@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+
+	<head>
+		<meta charset="utf-8">
+
+		<title>Rails 4 and PostgreSQL</title>
+
+		<meta name="description" content="New PostgreSQL magic in Rails 4">
+		<meta name="author" content="Jason Lewis">
+
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+		<link rel="stylesheet" href="css/reveal.min.css">
+		<link rel="stylesheet" href="css/theme/default.css" id="theme">
+
+		<!-- For syntax highlighting -->
+		<link rel="stylesheet" href="lib/css/zenburn.css">
+
+		<!-- If the query includes 'print-pdf', include the PDF print sheet -->
+		<script>
+			if( window.location.search.match( /print-pdf/gi ) ) {
+				var link = document.createElement( 'link' );
+				link.rel = 'stylesheet';
+				link.type = 'text/css';
+				link.href = 'css/print/pdf.css';
+				document.getElementsByTagName( 'head' )[0].appendChild( link );
+			}
+		</script>
+
+		<!--[if lt IE 9]>
+		<script src="lib/js/html5shiv.js"></script>
+		<![endif]-->
+	</head>
+
+	<body>
+
+		<div class="reveal">
+
+			<!-- Any section element inside of this container is displayed as a slide -->
+			<div class="slides">
+    <section data-id="6db0af5e3647b31344d53e2aceb3e230">
+        <h1 class="absolute-element" style="position: absolute; width: 542px; height: 121px; z-index: 4; left: 214px; top: 19px;">&nbsp; postgresql</h1>
+<div class="absolute-element" style="position: absolute; width: 401px; height: 376px; z-index: 4; left: 293px; top: 150px;">
+<img src="https://s3.amazonaws.com/media-p.slid.es/uploads/canweriotnow/images/315625/pg-rails.png" style="width: 360.47101426470107px; height: 337.3256139712792px; max-height: none; max-width: none;">
+        <br>
+</div>
+<div class="absolute-element" style="position: absolute; width: 67px; height: 46px; z-index: 4; left: 444px; top: 507px;">
+<span>and</span>
+        <br>
+</div>
+<h1 class="absolute-element" style="position: absolute; width: 307px; height: 121px; z-index: 4; left: 324px; top: 555px;">rails 4</h1>
+    </section>
+    <section data-id="c6b7b573ced00449ec430aeb7c6e9455">
+        <h2>What's New?</h2>
+        <div>
+            <br>
+        </div>
+        <div>
+            <ul>
+                <li>Array column support</li>
+                <li>Hstore extension support</li>
+                <li>UUID support</li>
+            </ul>
+            <div style="text-align: left;">
+                <br>
+            </div>
+        </div>
+        <div style="text-align: left; max-height: none; max-width: none; position: absolute; width: 968px; height: 138px; z-index: 4; left: 128px; top: 408px;" class="absolute-element">
+            <blockquote style="margin: 0 0 0 40px; border: none; padding: 0px;">
+                <div style="text-align: left;">
+                    <span style="font-style: normal;">These are built-in with ActiveRecord 4. But we can get even more with supporting gems... more on that later.</span>
+                </div>
+            </blockquote>
+        </div>
+    </section>
+    <section data-id="2264b4deb6a365eceadd2cade7ecb76d">
+        <h2>Arrays</h2>
+        <div>
+            <ul>
+                <li>Type must be declared (integer, text, etc.)</li>
+                <li>Multi-dimensional arrays are supported</li>
+                <li>Can be variable or fixed length</li>
+            </ul>
+				</div>
+        <div data-markdown>
+					```sql
+					CREATE TABLE test (
+					  id integer,
+					  title varchar(255),
+					  body text,
+					  child_ids integer[]); --This is an array
+					```
+        </div>
+
+    </section>
+		<section data-id="2264b4deb6a365eceadd2cade7ecb76d">
+				<h2>Arrays</h2>
+				<div>
+						We can do it in a migration too!
+				</div>
+				<div data-markdown>
+				```ruby
+				class CreateTest < ActiveRecord::Migration
+					def change
+						create_table :test do |t|
+						t.title :string
+						t.body :text
+						t.child_ids :integer, array: true, default: []
+
+						t.timestamps
+					end
+				end
+				```
+				</div>
+
+		</section>
+		<section>
+			<h2>Arrays: Use Case</h2>
+			<div>
+				Caching Tags
+			</div>
+			<div data-markdown>
+				`acts_as_taggable_on` is great, but it can _slow_ down your queries.
+			</div>
+			<div data-markdown>
+				```ruby
+				class CreatePosts < ActiveRecord::Migration
+				  def change
+				    create_table :posts do |t|
+				      t.string :title
+				      t.text :body
+				      t.integer :tag_array, array: true, default: []
+
+				      t.timestamps
+
+				    end
+
+				    add_index :posts, :tag_array, using: :gin
+				  end
+				end
+				```
+
+				```ruby
+				class Post < ActiveRecord::Base
+					acts_as_taggable
+					before_save :cache_tags
+
+					private
+					def cache_tags
+						tag_array = self.tag_list
+					end
+				end
+				```
+			</div>
+		</section>
+		<section>
+			<h2>Querying</h2>
+			<div>It's easy:</div>
+			<div data-markdown>
+				`Post.where('tag_array @> ?', 'tag')`
+
+				or
+
+				`Post.where('tag_array @> ?', ['tag1', 'tag2'])`
+			</div>
+		</section>
+		<section>
+			<h2>Hstore</h2>
+			<div>
+				It's pretty much like a Hash. Unstructured data living in a column.
+			</div>
+			<div>
+				It's an extension, so we have to create it. But ActiveRecord has made this easier as well:
+			</div>
+			<div data-markdown>
+				```ruby
+				class EnableHstore < ActiveRecord::Migration
+					def change
+						enable_extension 'hstore'
+					end
+				end
+				```
+
+				Then:
+
+				```ruby
+				class AddMetadataToPosts < ActiveRecord::Migration
+					def change
+						add_column :posts, :metadata, :hstore
+
+						add_index :posts, :metadata, using: :gin
+					end
+				end
+				```
+			</div>
+		</section>
+		<section>
+			<h2>Hstore</h2>
+			<div>
+				We can basically treat this like a hash:
+				<br/>
+				<pre>
+[1] pry(main)> p = Post.first
+=> #&lt;Post id: 1, title: "Test", body: "Lorem ipsum dolor sit amet", tag_array: [], metadata: nil&gt;
+[2] pry(main) p.metadata = {foo: 'bar', baz: 'quux'}
+=> {:foo=>"bar", :baz=>"quux"}
+[3] pry(main) p.save
+...
+=> true
+[4] pry(main) p
+=> #&lt;Post id: 1, title: "Test", body: "Lorem ipsum dolor sit amet", tag_array: [], metadata: {:foo=>"bar", :baz=>"quux"}&gt;
+			</pre>
+			</div>
+		</section>
+		<section>
+			<h2>But wait, there's more!</h2>
+			<div data-markdown>
+				With `store_accessor`, ActiveRecord lets us treat hstore keys like column attributes.
+			</div>
+			<div data-markdown>
+				```ruby
+				class Post < ActiveRecord::Base
+					store_accessor :metadata, :foo, :bar
+				end
+				```
+			</div>
+			<div>
+				<pre>
+[5] pry(main)> p.foo
+=> "bar"
+[6] pry(main)> p.foo = 'xyzzyx'
+=> 'xyzzyx'
+[7] pry(main)> p.save
+...
+=> true
+[8] pry(main)> Post.where("metadata -> 'foo' = 'xyzzyx'")
+=> [#&lt;Post id: 1, title: "Test", body: "Lorem ipsum dolor sit amet", tag_array: [], metadata: {:foo=>"xyzzyx", :baz=>"quux"}&gt;]
+				</pre>
+			</div>
+			<div>
+				But we can still store arbitrary additional keys in our hstore column.
+			</div>
+		</section>
+		<section>
+			<h2>Indices</h2>
+			<div data-markdown>
+				You might have noticed this:
+
+				`add_index :posts, :metadata, using: :gin`
+
+				Postgres defaults to using btree indices, but provides GiN (Generalized Inverted Index) and GiST (Generalized Search Tree) index types as well.
+
+				As of version 4.0.0, ActiveRecord supports the `using` keyword to specify index types.
+
+			</div>
+		</section>
+		<section>
+			<h2>Indices</h2>
+			<div data-markdown>
+				Basically, GiN is three times faster on read operations, and three times slower on writes, compared to GiST.
+
+				I suggest [reading the fine manual](http://www.postgresql.org/docs/9.3/static/textsearch-indexes.html) for your use case.
+
+				(But you'll mostly want GiN.)
+
+			</div>
+			<img src="img/tanqueray.png" alt="tanqueray" height="200px"/>
+		</section>
+		<section>
+			<h2>UUIDs</h2>
+			<div data-markdown>
+				UUIDs are pretty useful, and Postgres has an extension for a UUID column type.
+
+				We'll have to enable it:
+
+				```ruby
+				class EnableUuid < ActiveRecord::Migration
+					def change
+						enable_extension 'uuid-ossp'
+					end
+				end
+				```
+			</div>
+		</section>
+		<section>
+			<h2>UUIDs</h2>
+			<div data-markdown>
+				Now we can even use UUID primary keys:
+
+				```ruby
+				class CreateComments < ActiveRecord::Migration
+					def change
+						create_table :comments, id: :uuid do |t|
+							t.text :body
+							t.references :post
+
+							t.timestamps
+						end
+					end
+				end
+				```
+
+				You'll have to work around some ActiveRecord defaults, like
+				`references` in migrations (creates integer fk columns),
+				as well as redefining class methods like `first` and `last`.
+			</div>
+		</section>
+		<section>
+			<h2>Beyond ActiveRecord</h2>
+			<div data-markdown>
+				ActiveRecord 4 gives us some nice support, but we can do more.
+
+				Enter the [schema_plus](https://github.com/lomba/schema_plus) gem.
+
+				Normally, if we wanted to use basic features like views in our DB,
+				it meant writing irreversible SQL migrations and converting schema.rb
+				to SQL.
+
+				Not anymore.
+			</div>
+		</section>
+		<section>
+			<h2>Schema Plus: Views</h2>
+		<div data-markdown>
+			This is from actual production code. Don't worry, it's long since dropped:
+
+			```
+			class CreateStreamItemView < ActiveRecord::Migration
+			  def up
+			    execute <<-SQL
+			      CREATE OR REPLACE VIEW stream_items AS
+			         SELECT a.id, a.user_id, a.title, a.body, a.private, a.type,
+			            a.created_at, a.updated_at, a.comments_count, a.hearts_count,
+			            a.allow_feedback, a.goal_commitment_id, a.caption,
+			            a.evidence_file_name, a.evidence_file_size, a.evidence_updated_at,
+			            ( SELECT ARRAY( SELECT v.name
+			                           FROM ( SELECT ts.tag_id, ts.taggable_id,
+			                                    ts.taggable_type, ts.tagger_id,
+			                                    ts.tagger_type, ts.context, t.name
+			                                   FROM taggings ts
+			                              JOIN tags t ON ts.tag_id = t.id) v
+			                          WHERE v.taggable_id = a.id AND v.taggable_type::text = 'Artifact'::text) AS "array") AS tags,
+			            NULL::integer[] AS committed_user_ids, a.slug
+			           FROM artifacts a
+			        UNION
+			         SELECT g.id, g.creator_id AS user_id, g.title, g.body, g.private,
+			            'Goal'::character varying AS type, g.created_at, g.updated_at,
+			            g.comments_count AS comments_count, g.hearts_count AS hearts_count,
+			            g.allow_feedback, NULL::integer AS goal_commitment_id,
+			            NULL::character varying AS caption,
+			            NULL::character varying AS evidence_file_name,
+			            NULL::integer AS evidence_file_size,
+			            NULL::timestamp without time zone AS evidence_updated_at,
+			            ( SELECT ARRAY( SELECT v.name
+			                           FROM ( SELECT ts.tag_id, ts.taggable_id,
+			                                    ts.taggable_type, ts.tagger_id,
+			                                    ts.tagger_type, ts.context, t.name
+			                                   FROM taggings ts
+			                              JOIN tags t ON ts.tag_id = t.id) v
+			                          WHERE v.taggable_id = g.id AND v.taggable_type::text = 'Goal'::text) AS "array") AS tags,
+			            ( SELECT ARRAY( SELECT v.user_id
+			                           FROM ( SELECT gc.user_id, gc.goal_id
+			                                   FROM goal_commitments gc
+			                              JOIN goals g ON gc.goal_id = g.id) v
+			                          WHERE v.goal_id = g.id) AS "array") AS committed_user_ids, g.slug
+			           FROM goals g;
+			      SQL
+			  end
+
+			  def down
+			    execute <<-SQL
+			      drop view stream_items
+			    SQL
+			  end
+			end
+
+			```
+		</div>
+		<div>
+			<img src="img/fry_horror.gif"/>
+		</div>
+	</section>
+	<section>
+		<h2>Schema Plus: Views</h2>
+		<div data-markdown>
+			It gets better:
+
+			```ruby
+			class CreatePostsViews < ActiveRecord::Migration
+				# We can use the ActiveRecord query interface
+				create_view :commented_posts, Post.joins(:comments).where.not(comments: {id: nil})
+				# Or SQL
+				create_view :uncommented_posts, 'SELECT * FROM posts LEFT OUTER JOIN comments ON comments.post_id = posts.id WHERE comments.id IS NULL'
+			end
+			```
+
+			In either case, schema.rb will reflect the change, so we can still use `rake db:schema:load` and not have to convert our schema to SQL.
+		</div>
+	</section>
+	<section>
+		<h2>Schema Plus</h2>
+		<div data-markdown>
+			Schema Plus does a whole lot more:
+
+			* Foreign Key Constraints
+			* `drop_table` enhancements, like `if_exists` and `cascade`
+			* Expressions for column defaults, e.g.:
+			 	* `t.datetime :seen_at, default: { expr: 'NOW()' }`
+				 * `t.datetime :seen_at, , default: { value: "2011-12-11 00:00:00" }`
+	</section>
+	<section>
+		<h2>Desiderata</h2>
+		<div data-markdown>
+			There's still a lot that isn't baked into ActiveRecord, but there are
+			great gems and clever hacks that support additional PG features:
+
+			* [activerecord-postgis-adapter](http://dazuma.github.io/activerecord-postgis-adapter/)
+				* Support for PostGIS spatial queries
+			* [postgres_ext](https://github.com/dockyard/postgres_ext)
+				* Additional query methods for array, hstore datatpyes; support for INET/CIDR datatype
+			* [pg_search](https://github.com/Casecommons/pg_search)
+				* Support for Postgres full text search
+			* [This gist](https://gist.github.com/clarkdave/6529610)
+				* Proper interval support without coercion to String (as ActiveRecord is wont to do)
+
+
+		</div>
+	</section>
+	<section>
+		<h2>Going Further</h2>
+		<div data-markdown>
+			There's a lot more to Postgres than I can cover here, and the folks at [Heroku](http://heroku.com) have
+			put together a great tour: [Postgres - The Bits You Haven't Found Yet](https://devcenter.heroku.com/articles/postgres-the-bits-you-havent-found-yet)
+		</div>
+		<div>
+			<iframe src="https://player.vimeo.com/video/61044807?title=0&amp;byline=0&amp;portrait=0&amp;color=a086ee" width="500" height="281" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe> <p><a href="http://vimeo.com/61044807">Postgres The Bits You Haven't Found, Heroku's Peter van Hardenberg at Waza 2013</a> from <a href="http://vimeo.com/herokuwaza">Waza</a> on <a href="https://vimeo.com">Vimeo</a>.</p>
+		</div>
+	</section>
+	<section>
+		<h2>Takeaways</h2>
+		<div data-markdown>
+			* Postgres is amazing, and you shoudl explore it more
+			* Don't fear the SQL... O/RM will only get you so far
+			* That being said, keep hacking on ActiveRecord, and if a PG feature you like isn't supported...
+
+
+		</div>
+		<div>&nbsp;</div>
+		<h3>WRITE MOAR GEMS!!!</h3>
+	</section>
+	<section>
+		<h2>Thank You!</h2>
+		<img src="img/lady-gaga.gif"/>
+		<hr/>
+		<div data-markdown>
+			### Jason Lewis
+
+			Email: [jason@anestuary.com](mailto:jason@anestuary.com)
+
+			Twitter: [@canweriotnow](https://twitter.com/canweriotnow)
+
+			Github: [https://github.com/canweriotnow](https://github.com/canweriotnow)
+
+			Blag: [http://decomplecting.org](http://decomplecting.org)
+		</div>
+	</section>
+</div>
+
+
+
+		</div>
+
+		<script src="lib/js/head.min.js"></script>
+		<script src="js/reveal.min.js"></script>
+
+		<script>
+
+			// Full list of configuration options available here:
+			// https://github.com/hakimel/reveal.js#configuration
+			Reveal.initialize({
+				controls: true,
+				progress: true,
+				history: true,
+				center: true,
+
+				theme: Reveal.getQueryHash().theme, // available themes are in /css/theme
+				transition: Reveal.getQueryHash().transition || 'default', // default/cube/page/concave/zoom/linear/fade/none
+
+				// Parallax scrolling
+				// parallaxBackgroundImage: 'https://s3.amazonaws.com/hakim-static/reveal-js/reveal-parallax-1.jpg',
+				// parallaxBackgroundSize: '2100px 900px',
+
+				// Optional libraries used to extend on reveal.js
+				dependencies: [
+					{ src: 'lib/js/classList.js', condition: function() { return !document.body.classList; } },
+					{ src: 'plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: 'plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+					{ src: 'plugin/zoom-js/zoom.js', async: true, condition: function() { return !!document.body.classList; } },
+					{ src: 'plugin/notes/notes.js', async: true, condition: function() { return !!document.body.classList; } }
+				]
+			});
+
+		</script>
+
+	</body>
+</html>
